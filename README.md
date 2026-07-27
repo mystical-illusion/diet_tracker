@@ -28,29 +28,28 @@ A full-stack diet tracking web application that helps users monitor their daily 
 
 
 diet-tracker/
-│
-├── backend/                    # Python Flask REST API
-│   ├── app.py                  # Main application entry point
-│   ├── config.py               # Configuration settings
-│   ├── requirements.txt        # Python dependencies
-│   ├── .env                    # Environment variables
+├── backend/
+│   ├── app.py
+│   ├── config.py
+│   ├── requirements.txt
+│   ├── .env
 │   │
 │   ├── database/
-│   │   └── database.py         # SQLite connection & setup
+│   │   └── database.py
 │   │
-│   ├── models/                 # OOP Data models
+│   ├── models/
 │   │   ├── user.py
 │   │   ├── meal_log.py
 │   │   ├── daily_goal.py
 │   │   ├── food_item.py
 │   │   └── nutrition.py
 │   │
-│   ├── services/               # Business logic layer
+│   ├── services/
 │   │   ├── auth_service.py
 │   │   ├── food_service.py
 │   │   └── calorie_calc.py
 │   │
-│   └── routes/                 # API endpoints
+│   └── routes/
 │       ├── auth_routes.py
 │       ├── food_routes.py
 │       ├── log_routes.py
@@ -58,9 +57,9 @@ diet-tracker/
 │       ├── user_routes.py
 │       └── nutrition_routes.py
 │
-├── frontend/                   # React + Vite frontend
+├── frontend/
 │   ├── src/
-│   │   ├── pages/              # Full page components
+│   │   ├── pages/
 │   │   │   ├── LoginPage.jsx
 │   │   │   ├── RegisterPage.jsx
 │   │   │   ├── DashboardPage.jsx
@@ -68,7 +67,7 @@ diet-tracker/
 │   │   │   ├── NutritionPage.jsx
 │   │   │   └── ProfilePage.jsx
 │   │   │
-│   │   ├── components/         # Reusable components
+│   │   ├── components/
 │   │   │   ├── Navbar.jsx
 │   │   │   ├── CalorieSummary.jsx
 │   │   │   ├── FoodSearchBar.jsx
@@ -77,30 +76,27 @@ diet-tracker/
 │   │   │   ├── NutritionChart.jsx
 │   │   │   └── ProgressBar.jsx
 │   │   │
-│   │   ├── store/              # Zustand state management
+│   │   ├── store/
 │   │   │   ├── authStore.js
 │   │   │   ├── foodStore.js
 │   │   │   ├── goalStore.js
 │   │   │   └── logStore.js
 │   │   │
-│   │   ├── services/           # API service layer
+│   │   ├── services/
 │   │   │   ├── api.js
 │   │   │   ├── authService.js
 │   │   │   ├── foodService.js
 │   │   │   ├── goalService.js
 │   │   │   └── logService.js
 │   │   │
-│   │   ├── App.jsx             # AppLayout with Navbar
-│   │   ├── router.jsx          # React Router config
-│   │   └── main.jsx            # Entry point
+│   │   ├── App.jsx
+│   │   ├── router.jsx
+│   │   └── main.jsx
 │   │
 │   ├── package.json
 │   └── vite.config.js
 │
 └── README.md
-
----
-
 ## 🛠️ Tech Stack
 
 ### Backend
