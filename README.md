@@ -26,7 +26,7 @@ A full-stack diet tracking web application that helps users monitor their daily 
 
 
 
-
+```text
 diet-tracker/
 ├── backend/
 │   ├── app.py
@@ -97,6 +97,8 @@ diet-tracker/
 │   └── vite.config.js
 │
 └── README.md
+```
+
 ## 🛠️ Tech Stack
 
 ### Backend
