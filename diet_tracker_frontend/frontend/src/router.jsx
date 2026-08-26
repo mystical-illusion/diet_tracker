@@ -7,6 +7,7 @@ import DashboardPage from "./pages/DashboardPage";
 import FoodLogPage from "./pages/FoodLogPage";
 import NutritionPage from "./pages/NutritionPage";
 import ProfilePage from "./pages/ProfilePage";
+import AnalyticsPage from "./pages/AnalyticsPage";
 
 function RequireAuth({ children }) {
   const user = useAuthStore((s) => s.user);
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
       { path: "log", element: <FoodLogPage /> },
       { path: "nutrition", element: <NutritionPage /> },
       { path: "profile", element: <ProfilePage /> },
+      { path: "analytics", element: <AnalyticsPage /> },
     ],
   },
   { path: "*", element: <Navigate to="/login" replace /> },

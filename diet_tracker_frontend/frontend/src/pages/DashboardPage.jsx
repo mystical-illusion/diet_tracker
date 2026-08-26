@@ -5,6 +5,7 @@ import { useAuthStore } from "../store/authStore";
 import { useGoalStore } from "../store/goalStore";
 import CalorieSummary from "../components/CalorieSummary";
 import { WeeklyCalorieChart } from "../components/NutritionChart";
+import AIChat from "../components/AIChat";
 
 const MEAL_TYPES = ["Auto", "Breakfast", "Lunch", "Dinner", "Snack"];
 
@@ -88,6 +89,23 @@ export default function DashboardPage() {
   const totalCalories = meals.reduce((sum, m) => sum + m.calories, 0);
   const waterGoal = 2000;
   const waterPct = Math.min((water / waterGoal) * 100, 100);
+
+  async function askAI(question) {
+    const token = localStorage.getItem("token");
+    const response = await fetch("http://127.0.0.1:5001/nutrition/ai-chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        user_id: user?.id,
+        question: question,
+      }),
+    });
+    const data = await response.json();
+    return data.answer;
+  }
 
   return (
     <div className="page">
@@ -257,6 +275,7 @@ export default function DashboardPage() {
               </ul>
             )}
           </div>
+          <AIChat />
         </div>
 
         <div className="dash-right">

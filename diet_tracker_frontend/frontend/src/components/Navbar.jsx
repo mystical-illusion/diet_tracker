@@ -4,7 +4,8 @@ import { useAuthStore } from "../store/authStore";
 const links = [
   { to: "/dashboard", label: "Overview", icon: "⊞" },
   { to: "/log", label: "Food Log", icon: "📋" },
-  { to: "/nutrition", label: "Nutrient Goals", icon: "◎" },
+  { to: "/analytics", label: "Analytics", icon: "📊" }, // ← add!
+  { to: "/nutrition", label: "Goals", icon: "◎" },
   { to: "/profile", label: "Settings", icon: "👤" },
 ];
 
