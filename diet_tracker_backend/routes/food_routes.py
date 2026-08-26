@@ -1,6 +1,8 @@
 from flask import Blueprint, jsonify, request
 from services.food_service import FoodService
 
+from database.database import get_db  # ← this line!
+
 food_bp = Blueprint("food", __name__)
 
 @food_bp.route("/add", methods=["POST"])
