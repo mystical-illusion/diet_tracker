@@ -56,6 +56,17 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
     """)
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS meals (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id   INTEGER NOT NULL,
+        food      TEXT    NOT NULL,
+        calories  INTEGER NOT NULL,
+        meal_type TEXT    DEFAULT 'general',
+        date      TEXT    DEFAULT CURRENT_DATE,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+""")
     
     conn.commit()
     conn.close()

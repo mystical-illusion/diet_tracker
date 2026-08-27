@@ -199,3 +199,53 @@ def get_top_foods():
     return jsonify({
         "top_foods": [dict(f) for f in foods]
     }), 200
+
+@analytics_bp.route("/weekly-organized", methods=["GET"])
+def get_weekly_organized():
+    user_id = request.args.get("user_id")
+
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT id, food, calories, meal_type, date
+        FROM meals
+        WHERE user_id = ?
+        ORDER BY date DESC, id ASC
+        LIMIT 100
+    """, (user_id,)).fetchall()
+    conn.close()
+
+    meals = [dict(row) for row in rows]
+
+    # organize by date then meal_type
+    organized = {}
+    for meal in meals:
+        date = meal["date"]
+        meal_type = meal["meal_type"] or "general"
+
+        if date not in organized:
+            organized[date] = {
+                "date": date,
+                "breakfast": [],
+                "lunch": [],
+                "dinner": [],
+                "snack": [],
+                "general": [],
+                "total_calories": 0
+            }
+
+        organized[date][meal_type].append(meal)
+        organized[date]["total_calories"] += meal["calories"]
+
+    # convert to sorted list
+    result = sorted(
+        organized.values(),
+        key=lambda x: x["date"],
+        reverse=True
+    )[:7]  # last 7 days
+
+    return jsonify({
+        "weekly": result
+    }), 200
