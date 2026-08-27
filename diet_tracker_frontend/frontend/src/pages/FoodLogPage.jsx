@@ -3,6 +3,7 @@ import { format, addDays, subDays } from "date-fns";
 import { useLogStore } from "../store/logStore";
 import { useGoalStore } from "../store/goalStore";
 import { useAuthStore } from "../store/authStore";
+import WeeklyMeals from "../components/WeeklyMeals";
 
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"];
 const FILTERS = ["All", "Breakfast", "Lunch", "Dinner", "Snack"];
@@ -18,6 +19,7 @@ export default function FoodLogPage() {
   const [adding, setAdding] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [meals, setMeals] = useState([]);
+  const [mealType, setMealType] = useState("breakfast");
 
   const isToday = date === format(new Date(), "yyyy-MM-dd");
 
@@ -65,6 +67,7 @@ export default function FoodLogPage() {
           user_id: user?.id,
           food: food,
           calories: parseInt(calories),
+          meal_type: mealType,
         }),
       });
       const data = await response.json();
@@ -203,6 +206,16 @@ export default function FoodLogPage() {
                 placeholder="e.g. 89"
                 min="1"
               />
+              <select
+                className="input"
+                value={mealType}
+                onChange={(e) => setMealType(e.target.value)}
+              >
+                <option value="breakfast">🌅 Breakfast</option>
+                <option value="lunch">☀️ Lunch</option>
+                <option value="dinner">🌙 Dinner</option>
+                <option value="snack">🍎 Snack</option>
+              </select>
             </div>
             <button
               onClick={handleAdd}
@@ -265,6 +278,7 @@ export default function FoodLogPage() {
           ))}
         </div>
       )}
+      <WeeklyMeals />
     </div>
   );
 }

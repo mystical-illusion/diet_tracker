@@ -47,8 +47,11 @@ export default function DashboardPage() {
   const loadMeals = async () => {
     try {
       const token = localStorage.getItem("token");
+      const today = format(new Date(), "yyyy-MM-dd");
+
       const response = await fetch(
-        `http://127.0.0.1:5001/food/list?user_id=${user?.id}`,
+        `http://127.0.0.1:5001/food/list?user_id=${user?.id}&date=${today}`,
+        //                                               ↑ add date!
         { headers: { Authorization: `Bearer ${token}` } },
       );
       const data = await response.json();
