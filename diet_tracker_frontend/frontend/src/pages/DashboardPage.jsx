@@ -36,11 +36,23 @@ export default function DashboardPage() {
     localStorage.setItem("water_today", water.toString());
   }, [water]);
 
+  // Add this helper function above useEffect
+  const loadWater = () => {
+    const savedDate = localStorage.getItem("water_date");
+    if (savedDate !== today) {
+      localStorage.setItem("water_date", today);
+      localStorage.setItem("water_today", "0");
+      setWater(0);
+    } else {
+      setWater(parseInt(localStorage.getItem("water_today") || "0", 10));
+    }
+  };
+
   useEffect(() => {
-    fetchLogs(today);
     fetchGoal();
     loadMeals();
-    loadWeeklyData();
+    loadWeeklyData(); // ← make sure this is here!
+    loadWater();
   }, []);
 
   // load user's meals
@@ -60,34 +72,31 @@ export default function DashboardPage() {
   };
 
   // build weekly data from meals
+
+  // build weekly data from analytics
   const loadWeeklyData = async () => {
+    if (!user?.id) return;
+
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(
-        `http://127.0.0.1:5001/food/list?user_id=${user?.id}`,
+        `http://127.0.0.1:5001/analytics/daily?user_id=${user.id}&days=7`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       const data = await response.json();
-      const meals = data.meals || [];
 
-      // group by date
-      const grouped = {};
-      meals.forEach((meal) => {
-        if (!grouped[meal.date]) {
-          grouped[meal.date] = 0;
-        }
-        grouped[meal.date] += meal.calories;
-      });
-
-      // convert to array
-      const weekly = Object.entries(grouped).map(([date, calories]) => ({
-        date,
-        calories,
+      // 🎯 Map "total_calories" from API to "calories" for the chart
+      const formatted = (data.daily || []).map((item) => ({
+        date: item.date,
+        calories: item.total_calories || item.calories || 0,
+        meal_count: item.meal_count || 0,
       }));
-      setWeeklyData(weekly);
-    } catch {}
-  };
 
+      setWeeklyData(formatted);
+    } catch (err) {
+      console.error("Weekly data error:", err);
+    }
+  };
   const calorieGoal = goal?.daily_goal || 2000;
   const totalCalories = meals.reduce((sum, m) => sum + m.calories, 0);
   const waterGoal = 2000;
