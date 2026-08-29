@@ -11,14 +11,27 @@ export const useGoalStore = create((set) => ({
     set({ loading: true });
     try {
       const user = useAuthStore.getState().user;
-      if (!user) {
+
+      // add this check!
+      if (!user || !user.id) {
+        console.log("No user or user.id:", user);
         set({ loading: false });
         return;
       }
 
+      console.log("Fetching goal for user:", user.id);
+
       const response = await fetch(`${API_URL}/goals/${user.id}`, {
         headers: authHeaders(),
       });
+
+      // check if response is ok first!
+      if (!response.ok) {
+        console.log("Goal response status:", response.status);
+        set({ loading: false });
+        return;
+      }
+
       const data = await response.json();
       set({ goal: data.goal, loading: false });
     } catch (err) {
@@ -26,7 +39,6 @@ export const useGoalStore = create((set) => ({
       set({ loading: false });
     }
   },
-
   // save or update goal
   saveGoal: async (daily_goal) => {
     try {

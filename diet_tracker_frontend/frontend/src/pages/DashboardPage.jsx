@@ -18,9 +18,10 @@ export default function DashboardPage() {
   const [meals, setMeals] = useState([]);
   const [aiText, setAiText] = useState("");
   const [mealPref, setMealPref] = useState("Auto");
+  const [loading, setLoading] = useState(false);
   const today = format(new Date(), "yyyy-MM-dd");
 
-  // water with localStorage persistence
+  // Water with localStorage persistence
   const [water, setWater] = useState(() => {
     const savedDate = localStorage.getItem("water_date");
     if (savedDate !== today) {
@@ -28,15 +29,14 @@ export default function DashboardPage() {
       localStorage.setItem("water_today", "0");
       return 0;
     }
-    return parseInt(localStorage.getItem("water_today") || "0");
+    return parseInt(localStorage.getItem("water_today") || "0", 10);
   });
 
-  // save water to localStorage on change
+  // Save water to localStorage on change
   useEffect(() => {
     localStorage.setItem("water_today", water.toString());
   }, [water]);
 
-  // Add this helper function above useEffect
   const loadWater = () => {
     const savedDate = localStorage.getItem("water_date");
     if (savedDate !== today) {
@@ -49,31 +49,31 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    fetchGoal();
-    loadMeals();
-    loadWeeklyData(); // ← make sure this is here!
-    loadWater();
-  }, []);
+    if (user?.id) {
+      fetchGoal();
+      loadMeals();
+      loadWeeklyData();
+      loadWater();
+    }
+  }, [user?.id]);
 
-  // load user's meals
+  // Load user's meals
   const loadMeals = async () => {
+    if (!user?.id) return;
     try {
       const token = localStorage.getItem("token");
-      const today = format(new Date(), "yyyy-MM-dd");
-
       const response = await fetch(
-        `http://127.0.0.1:5001/food/list?user_id=${user?.id}&date=${today}`,
-        //                                               ↑ add date!
+        `http://127.0.0.1:5001/food/list?user_id=${user.id}&date=${today}`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       const data = await response.json();
       setMeals(data.meals || []);
-    } catch {}
+    } catch (err) {
+      console.error("Meals loading error:", err);
+    }
   };
 
-  // build weekly data from meals
-
-  // build weekly data from analytics
+  // Build weekly data from analytics
   const loadWeeklyData = async () => {
     if (!user?.id) return;
 
@@ -85,7 +85,6 @@ export default function DashboardPage() {
       );
       const data = await response.json();
 
-      // 🎯 Map "total_calories" from API to "calories" for the chart
       const formatted = (data.daily || []).map((item) => ({
         date: item.date,
         calories: item.total_calories || item.calories || 0,
@@ -97,27 +96,80 @@ export default function DashboardPage() {
       console.error("Weekly data error:", err);
     }
   };
+
   const calorieGoal = goal?.daily_goal || 2000;
-  const totalCalories = meals.reduce((sum, m) => sum + m.calories, 0);
+  const totalCalories = meals.reduce((sum, m) => sum + (m.calories || 0), 0);
   const waterGoal = 2000;
   const waterPct = Math.min((water / waterGoal) * 100, 100);
 
-  async function askAI(question) {
-    const token = localStorage.getItem("token");
-    const response = await fetch("http://127.0.0.1:5001/nutrition/ai-chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        user_id: user?.id,
-        question: question,
-      }),
-    });
-    const data = await response.json();
-    return data.answer;
+  // Smart Logger
+  async function handleSmartLog() {
+    if (!aiText.trim() || loading || !user?.id) return;
+    setLoading(true);
+
+    try {
+      const token = localStorage.getItem("token");
+
+      // Step 1: Ask AI to extract food and calories
+      const aiResponse = await fetch(
+        "http://127.0.0.1:5001/nutrition/ai-extract",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            text: aiText,
+            meal_type: mealPref.toLowerCase(),
+          }),
+        },
+      );
+      const aiData = await aiResponse.json();
+
+      // Step 2: Log extracted meals
+      if (aiData.meals && aiData.meals.length > 0) {
+        const finalMealType =
+          mealPref.toLowerCase() === "auto"
+            ? (aiData.meal_type || "snack").toLowerCase()
+            : mealPref.toLowerCase();
+
+        for (const meal of aiData.meals) {
+          await fetch("http://127.0.0.1:5001/food/add", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              user_id: user.id,
+              food: meal.food,
+              calories: meal.calories,
+              meal_type: finalMealType,
+              date: today,
+            }),
+          });
+        }
+        setAiText("");
+        await loadMeals();
+        await loadWeeklyData();
+      } else {
+        alert("Could not detect any food items in the text.");
+      }
+    } catch (err) {
+      console.error("Smart log error:", err);
+      alert("Failed to process meal");
+    } finally {
+      setLoading(false);
+    }
   }
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSmartLog();
+    }
+  };
 
   return (
     <div className="page">
@@ -172,7 +224,6 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Contained block that dynamically adapts to input lines */}
             <div
               className="ai-logger-wrap"
               style={{
@@ -187,46 +238,74 @@ export default function DashboardPage() {
                 className="ai-logger-textarea"
                 value={aiText}
                 onChange={(e) => setAiText(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder="e.g. I had two boiled eggs and toast..."
-                rows={Math.max(1, aiText.split("\n").length)} // 🎯 Starts small (1 row), scales up automatically as you go longer!
+                rows={Math.max(1, aiText.split("\n").length)}
+                disabled={loading}
                 style={{
                   flex: 1,
                   resize: "none",
                   width: "100%",
                   boxSizing: "border-box",
-                  minHeight: "36px", // Small baseline height when empty
+                  minHeight: "36px",
                 }}
               />
               <button
                 className="ai-logger-send"
+                onClick={handleSmartLog}
+                disabled={!aiText.trim() || loading}
                 style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   width: "45px",
                   flexShrink: 0,
+                  cursor: !aiText.trim() || loading ? "not-allowed" : "pointer",
+                  opacity: !aiText.trim() || loading ? 0.6 : 1,
                 }}
               >
-                ➤
+                {loading ? "..." : "➤"}
               </button>
             </div>
 
             <div className="row-between mt-3">
-              <div className="row gap-2">
+              <div className="row gap-2" style={{ alignItems: "center" }}>
                 <span className="text-xxs text-subtle uppercase">
                   Preference:
                 </span>
-                <div className="row gap-1">
-                  {MEAL_TYPES.map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setMealPref(m)}
-                      className={`filter-tab ${mealPref === m ? "active" : ""}`}
-                      style={{ padding: "3px 10px", fontSize: 11 }}
-                    >
-                      {m}
-                    </button>
-                  ))}
+                <div
+                  className="row gap-1"
+                  style={{ display: "flex", gap: "6px" }}
+                >
+                  {MEAL_TYPES.map((m) => {
+                    const isSelected =
+                      mealPref.toLowerCase() === m.toLowerCase();
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setMealPref(m)}
+                        style={{
+                          padding: "4px 10px",
+                          fontSize: "11px",
+                          borderRadius: "6px",
+                          cursor: "pointer",
+                          border: isSelected
+                            ? "1px solid var(--cyan, #00d2ff)"
+                            : "1px solid var(--border, #333)",
+                          background: isSelected
+                            ? "rgba(0, 210, 255, 0.15)"
+                            : "var(--surface-2, #1a1a24)",
+                          color: isSelected
+                            ? "var(--cyan, #00d2ff)"
+                            : "var(--text-muted, #aaa)",
+                          fontWeight: isSelected ? "600" : "400",
+                        }}
+                      >
+                        {m}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -256,37 +335,124 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Today's Meals */}
+          {/* Categorized Today's Meals */}
           <div className="card">
-            <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 14 }}>
-              Today's Meals
-            </p>
+            <div className="row-between mb-3">
+              <span style={{ fontWeight: 600, fontSize: 14 }}>
+                Today's Meals
+              </span>
+              <span style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>
+                {meals.length} {meals.length === 1 ? "item" : "items"}
+              </span>
+            </div>
+
             {meals.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-state-icon">🍽️</div>
                 <div className="empty-state-title">No meals logged</div>
               </div>
             ) : (
-              <ul style={{ listStyle: "none", padding: 0 }}>
-                {meals.map((meal) => (
-                  <li
-                    key={meal.id}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      padding: "8px 0",
-                      borderBottom: "1px solid var(--border)",
-                    }}
-                  >
-                    <span>{meal.food}</span>
-                    <span style={{ color: "var(--cyan)" }}>
-                      {meal.calories} kcal
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                }}
+              >
+                {[
+                  { title: "Breakfast", icon: "🍳", key: "breakfast" },
+                  { title: "Lunch", icon: "🥗", key: "lunch" },
+                  { title: "Dinner", icon: "🍲", key: "dinner" },
+                  { title: "Snack", icon: "🍎", key: "snack" },
+                ].map((cat) => {
+                  const catMeals = meals.filter(
+                    (m) => (m.meal_type || "snack").toLowerCase() === cat.key,
+                  );
+                  const catTotal = catMeals.reduce(
+                    (sum, m) => sum + (m.calories || 0),
+                    0,
+                  );
+
+                  return (
+                    <div
+                      key={cat.key}
+                      style={{
+                        background: "var(--surface-2, #15151e)",
+                        borderRadius: "8px",
+                        padding: "10px 12px",
+                        border: "1px solid var(--border, #2a2a38)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: catMeals.length > 0 ? "6px" : "0",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          <span>{cat.icon}</span>
+                          <span style={{ fontWeight: 600, fontSize: 13 }}>
+                            {cat.title}
+                          </span>
+                        </div>
+                        <span
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color:
+                              catTotal > 0 ? "var(--cyan, #00d2ff)" : "#666",
+                          }}
+                        >
+                          {catTotal} kcal
+                        </span>
+                      </div>
+
+                      {catMeals.length > 0 ? (
+                        <ul
+                          style={{ listStyle: "none", padding: 0, margin: 0 }}
+                        >
+                          {catMeals.map((meal) => (
+                            <li
+                              key={meal.id}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                fontSize: 12,
+                                padding: "4px 0",
+                                color: "var(--text, #ddd)",
+                                borderTop:
+                                  "1px solid var(--border, rgba(255,255,255,0.05))",
+                              }}
+                            >
+                              <span>{meal.food}</span>
+                              <span
+                                style={{ color: "var(--text-muted, #888)" }}
+                              >
+                                {meal.calories} kcal
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span style={{ fontSize: 11, color: "#666" }}>
+                          No food logged
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
+
           <AIChat />
         </div>
 
