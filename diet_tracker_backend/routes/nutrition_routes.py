@@ -327,3 +327,53 @@ def ai_chat():
     except Exception as e:
         print(f"❌ Gemini Chat Error: {e}")
         return jsonify({"answer": f"AI service error: {str(e)}"}), 200
+    # POST /nutrition/water/add
+# POST /nutrition/water/add
+@nutrition_bp.route("/water/add", methods=["POST", "OPTIONS"])
+def add_water_log():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    amount_ml = data.get("amount_ml")
+    date_str = data.get("date")
+    is_reset = data.get("reset", False)
+
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+
+    conn = get_db()
+    
+    # Check existing entry for user and date
+    existing = conn.execute(
+        "SELECT water FROM daily_logs WHERE user_id = ? AND date = ?",
+        (user_id, date_str)
+    ).fetchone()
+
+    if is_reset:
+        new_total = 0
+    elif existing:
+        new_total = (existing["water"] or 0) + int(amount_ml or 0)
+    else:
+        new_total = int(amount_ml or 0)
+
+    if existing:
+        conn.execute(
+            "UPDATE daily_logs SET water = ? WHERE user_id = ? AND date = ?",
+            (new_total, user_id, date_str)
+        )
+    else:
+        conn.execute(
+            "INSERT INTO daily_logs (user_id, date, water) VALUES (?, ?, ?)",
+            (user_id, date_str, new_total)
+        )
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "message": "Water logged successfully",
+        "total_water": new_total,
+        "date": date_str
+    }), 200
