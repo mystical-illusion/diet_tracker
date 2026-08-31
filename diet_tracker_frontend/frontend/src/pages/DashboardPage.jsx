@@ -7,6 +7,8 @@ import { useGoalStore } from "../store/goalStore";
 import CalorieSummary from "../components/CalorieSummary";
 import { WeeklyCalorieChart } from "../components/NutritionChart";
 import AIChat from "../components/AIChat";
+import NutrientBalance from "../components/NutrientBalance";
+import BMICard from "../components/BMICard";
 
 const MEAL_TYPES = ["Auto", "Breakfast", "Lunch", "Dinner", "Snack"];
 
@@ -20,16 +22,17 @@ export default function DashboardPage() {
   const [aiText, setAiText] = useState("");
   const [mealPref, setMealPref] = useState("Auto");
   const [loading, setLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const today = format(new Date(), "yyyy-MM-dd");
 
   const userId = user?.id;
 
-  // 1. Dynamic Water Target Goal (Persisted in localStorage, defaults to 2500 ml)
+  // 1. Dynamic Water Target Goal
   const [waterGoal, setWaterGoal] = useState(() => {
     return parseInt(localStorage.getItem("water_goal") || "2500", 10);
   });
 
-  // 2. Daily Water Intake (Persisted per date)
+  // 2. Daily Water Intake State
   const [water, setWater] = useState(() => {
     const savedDate = localStorage.getItem("water_date");
     if (savedDate !== today) {
@@ -40,23 +43,21 @@ export default function DashboardPage() {
     return parseInt(localStorage.getItem("water_today") || "0", 10);
   });
 
-  // Custom water amount and target edit state
   const [customWater, setCustomWater] = useState("");
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [tempGoal, setTempGoal] = useState(waterGoal.toString());
 
-  // Persist daily water intake
+  // Persist local hydration cache
   useEffect(() => {
     localStorage.setItem("water_today", water.toString());
   }, [water]);
 
-  // Persist custom water target goal
   useEffect(() => {
     localStorage.setItem("water_goal", waterGoal.toString());
   }, [waterGoal]);
 
-  // Sync date change and reset water if necessary
-  const loadWater = useCallback(() => {
+  // Sync initial water intake from backend
+  const loadWater = useCallback(async () => {
     const savedDate = localStorage.getItem("water_date");
     if (savedDate !== today) {
       localStorage.setItem("water_date", today);
@@ -65,17 +66,64 @@ export default function DashboardPage() {
     } else {
       setWater(parseInt(localStorage.getItem("water_today") || "0", 10));
     }
-  }, [today]);
 
-  // Helper to add water
-  const handleAddWater = (amount) => {
+    if (userId) {
+      try {
+        const res = await api.get(
+          `/analytics/nutrient-status?user_id=${userId}&date=${today}`,
+        );
+        const dbWater = res.data?.summary?.water_consumed_ml;
+        if (typeof dbWater === "number") {
+          setWater(dbWater);
+          localStorage.setItem("water_today", dbWater.toString());
+        }
+      } catch (err) {
+        console.error("Error fetching water status:", err);
+      }
+    }
+  }, [today, userId]);
+
+  // Log water to state and backend
+  const handleAddWater = async (amount) => {
     const num = parseInt(amount, 10);
     if (!isNaN(num) && num > 0) {
       setWater((prev) => prev + num);
+
+      if (userId) {
+        try {
+          await api.post("/nutrition/water/add", {
+            user_id: userId,
+            amount_ml: num,
+            date: today,
+          });
+          setRefreshKey((k) => k + 1);
+        } catch (err) {
+          console.error("Failed to sync water to backend:", err);
+        }
+      }
     }
   };
 
-  // Helper to save target goal
+  // Reset water in state and backend
+  const handleResetWater = async () => {
+    setWater(0);
+    localStorage.setItem("water_today", "0");
+
+    if (userId) {
+      try {
+        await api.post("/nutrition/water/add", {
+          user_id: userId,
+          amount_ml: 0,
+          reset: true,
+          date: today,
+        });
+        setRefreshKey((k) => k + 1);
+      } catch (err) {
+        console.error("Failed to reset water on backend:", err);
+      }
+    }
+  };
+
   const handleSaveGoal = () => {
     const parsed = parseInt(tempGoal, 10);
     if (!isNaN(parsed) && parsed >= 500) {
@@ -111,7 +159,7 @@ export default function DashboardPage() {
     }
   }, [userId]);
 
-  // 5. Stable Data Initialization Hook
+  // 5. Data Initialization Hook
   useEffect(() => {
     if (userId) {
       fetchGoal();
@@ -121,14 +169,12 @@ export default function DashboardPage() {
     }
   }, [userId, fetchGoal, loadMeals, loadWeeklyData, loadWater]);
 
-  // General Dashboard Calculations
   const calorieGoal = Number(goal?.daily_goal) || 2000;
   const totalCalories = meals.reduce(
     (sum, m) => sum + (Number(m.calories) || 0),
     0,
   );
 
-  // Dynamic Water Percentages
   const waterPct = waterGoal > 0 ? (water / waterGoal) * 100 : 0;
   const barFillPct = Math.min(waterPct, 100);
 
@@ -170,6 +216,7 @@ export default function DashboardPage() {
         setAiText("");
         await loadMeals();
         await loadWeeklyData();
+        setRefreshKey((k) => k + 1);
       } else {
         alert("Could not detect any food items in the text.");
       }
@@ -189,37 +236,89 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="page">
+    <div
+      className="page"
+      style={{ padding: "20px", maxWidth: "1280px", margin: "0 auto" }}
+    >
       {/* Header */}
-      <div className="row-between mb-4">
+      <div
+        className="row-between mb-4"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "20px",
+        }}
+      >
         <div>
-          <div className="dash-greeting">
+          <div
+            className="dash-greeting"
+            style={{ fontSize: "20px", fontWeight: "700", color: "#fff" }}
+          >
             Hi, {user?.username || "Nutrition Expert"} 👋
           </div>
-          <div className="dash-date">
+          <div
+            className="dash-date"
+            style={{
+              fontSize: "12px",
+              color: "var(--text-muted, #94a3b8)",
+              marginTop: "2px",
+            }}
+          >
             📅 Today is {format(new Date(), "EEEE, MMM d")}
           </div>
         </div>
         <button
           className="btn btn-primary"
           onClick={() => (window.location.href = "/log")}
+          style={{
+            padding: "8px 16px",
+            background: "var(--cyan, #00d2ff)",
+            border: "none",
+            borderRadius: "6px",
+            color: "#000",
+            fontWeight: "600",
+            cursor: "pointer",
+          }}
         >
           + Manual Food Log
         </button>
       </div>
 
-      <div className="dash-grid">
-        <div className="dash-main">
+      <div
+        className="dash-grid"
+        style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "20px" }}
+      >
+        {/* Left Main Column */}
+        <div
+          className="dash-main"
+          style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+        >
           {/* Smart Logger Card */}
-          <div className="card">
-            <div className="row gap-3 mb-3">
+          <div
+            className="card"
+            style={{
+              background: "var(--surface-1, #1e293b)",
+              padding: "16px",
+              borderRadius: "10px",
+            }}
+          >
+            <div
+              className="row gap-3 mb-3"
+              style={{
+                display: "flex",
+                gap: "12px",
+                alignItems: "center",
+                marginBottom: "12px",
+              }}
+            >
               <div
                 style={{
                   width: 34,
                   height: 34,
                   borderRadius: 8,
-                  background: "var(--cyan-tint)",
-                  border: "1px solid var(--cyan-tint2)",
+                  background: "rgba(0, 210, 255, 0.1)",
+                  border: "1px solid rgba(0, 210, 255, 0.3)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -229,13 +328,34 @@ export default function DashboardPage() {
                 ⚡
               </div>
               <div className="flex-1">
-                <div className="row gap-2">
-                  <span style={{ fontWeight: 600, fontSize: 14 }}>
+                <div
+                  style={{ display: "flex", gap: "8px", alignItems: "center" }}
+                >
+                  <span
+                    style={{ fontWeight: 600, fontSize: 14, color: "#fff" }}
+                  >
                     Smart Logger
                   </span>
-                  <span className="badge badge-cyan">ACTIVE</span>
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      background: "rgba(0, 210, 255, 0.2)",
+                      color: "#00d2ff",
+                      padding: "1px 6px",
+                      borderRadius: "4px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    ACTIVE
+                  </span>
                 </div>
-                <p className="text-xs text-subtle mt-1">
+                <p
+                  style={{
+                    margin: "2px 0 0 0",
+                    fontSize: "11px",
+                    color: "var(--text-muted, #94a3b8)",
+                  }}
+                >
                   Describe what you ate in natural language
                 </p>
               </div>
@@ -256,7 +376,7 @@ export default function DashboardPage() {
                 value={aiText}
                 onChange={(e) => setAiText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="e.g. I had two boiled eggs and toast..."
+                placeholder="e.g. I had two boiled eggs and whole wheat toast..."
                 rows={Math.max(1, aiText.split("\n").length)}
                 disabled={loading}
                 style={{
@@ -264,7 +384,13 @@ export default function DashboardPage() {
                   resize: "none",
                   width: "100%",
                   boxSizing: "border-box",
-                  minHeight: "36px",
+                  minHeight: "42px",
+                  background: "#0f172a",
+                  border: "1px solid #334155",
+                  borderRadius: "6px",
+                  padding: "10px",
+                  color: "#fff",
+                  fontSize: "13px",
                 }}
               />
               <button
@@ -275,8 +401,13 @@ export default function DashboardPage() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  width: "45px",
-                  flexShrink: 0,
+                  width: "48px",
+                  marginLeft: "8px",
+                  borderRadius: "6px",
+                  background: "var(--cyan, #00d2ff)",
+                  border: "none",
+                  color: "#000",
+                  fontWeight: "bold",
                   cursor: !aiText.trim() || loading ? "not-allowed" : "pointer",
                   opacity: !aiText.trim() || loading ? 0.6 : 1,
                 }}
@@ -285,15 +416,27 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            <div className="row-between mt-3">
-              <div className="row gap-2" style={{ alignItems: "center" }}>
-                <span className="text-xxs text-subtle uppercase">
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginTop: "12px",
+              }}
+            >
+              <div
+                style={{ display: "flex", gap: "8px", alignItems: "center" }}
+              >
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--text-muted, #94a3b8)",
+                    textTransform: "uppercase",
+                  }}
+                >
                   Preference:
                 </span>
-                <div
-                  className="row gap-1"
-                  style={{ display: "flex", gap: "6px" }}
-                >
+                <div style={{ display: "flex", gap: "6px" }}>
                   {MEAL_TYPES.map((m) => {
                     const isSelected =
                       mealPref.toLowerCase() === m.toLowerCase();
@@ -309,13 +452,13 @@ export default function DashboardPage() {
                           cursor: "pointer",
                           border: isSelected
                             ? "1px solid var(--cyan, #00d2ff)"
-                            : "1px solid var(--border, #333)",
+                            : "1px solid #334155",
                           background: isSelected
                             ? "rgba(0, 210, 255, 0.15)"
-                            : "var(--surface-2, #1a1a24)",
+                            : "#0f172a",
                           color: isSelected
                             ? "var(--cyan, #00d2ff)"
-                            : "var(--text-muted, #aaa)",
+                            : "var(--text-muted, #94a3b8)",
                           fontWeight: isSelected ? "600" : "400",
                         }}
                       >
@@ -328,45 +471,79 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* 7-Day Chart */}
-          <div className="card">
-            <div className="row-between mb-1">
-              <span style={{ fontWeight: 600, fontSize: 14 }}>
+          {/* 7-Day Calorie Chart */}
+          <div
+            className="card"
+            style={{
+              background: "var(--surface-1, #1e293b)",
+              padding: "16px",
+              borderRadius: "10px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "8px",
+              }}
+            >
+              <span style={{ fontWeight: 600, fontSize: 14, color: "#fff" }}>
                 7-Day Calorie Intakes
               </span>
               <div
                 style={{
-                  padding: "4px 12px",
-                  background: "var(--surface-2)",
-                  border: "1px solid var(--border)",
+                  padding: "3px 10px",
+                  background: "#0f172a",
+                  border: "1px solid #334155",
                   borderRadius: 6,
-                  fontSize: 12,
-                  color: "var(--text-muted)",
+                  fontSize: 11,
+                  color: "var(--text-muted, #94a3b8)",
                 }}
               >
                 Target: {calorieGoal} kcal
               </div>
             </div>
-            <div className="chart-wrap">
-              <WeeklyCalorieChart data={weeklyData} />
-            </div>
+            <WeeklyCalorieChart data={weeklyData} />
           </div>
 
           {/* Categorized Today's Meals */}
-          <div className="card">
-            <div className="row-between mb-3">
-              <span style={{ fontWeight: 600, fontSize: 14 }}>
+          <div
+            className="card"
+            style={{
+              background: "var(--surface-1, #1e293b)",
+              padding: "16px",
+              borderRadius: "10px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "12px",
+              }}
+            >
+              <span style={{ fontWeight: 600, fontSize: 14, color: "#fff" }}>
                 Today's Meals
               </span>
-              <span style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>
+              <span
+                style={{ fontSize: 12, color: "var(--text-muted, #94a3b8)" }}
+              >
                 {meals.length} {meals.length === 1 ? "item" : "items"}
               </span>
             </div>
 
             {meals.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-state-icon">🍽️</div>
-                <div className="empty-state-title">No meals logged</div>
+              <div
+                style={{
+                  textAlign: "center",
+                  padding: "20px",
+                  color: "#64748b",
+                  fontSize: "13px",
+                }}
+              >
+                🍽️ No meals logged today yet.
               </div>
             ) : (
               <div
@@ -394,10 +571,10 @@ export default function DashboardPage() {
                     <div
                       key={cat.key}
                       style={{
-                        background: "var(--surface-2, #15151e)",
+                        background: "#0f172a",
                         borderRadius: "8px",
                         padding: "10px 12px",
-                        border: "1px solid var(--border, #2a2a38)",
+                        border: "1px solid #334155",
                       }}
                     >
                       <div
@@ -416,7 +593,13 @@ export default function DashboardPage() {
                           }}
                         >
                           <span>{cat.icon}</span>
-                          <span style={{ fontWeight: 600, fontSize: 13 }}>
+                          <span
+                            style={{
+                              fontWeight: 600,
+                              fontSize: 13,
+                              color: "#fff",
+                            }}
+                          >
                             {cat.title}
                           </span>
                         </div>
@@ -425,7 +608,7 @@ export default function DashboardPage() {
                             fontSize: 12,
                             fontWeight: 600,
                             color:
-                              catTotal > 0 ? "var(--cyan, #00d2ff)" : "#666",
+                              catTotal > 0 ? "var(--cyan, #00d2ff)" : "#64748b",
                           }}
                         >
                           {catTotal} kcal
@@ -444,14 +627,13 @@ export default function DashboardPage() {
                                 justifyContent: "space-between",
                                 fontSize: 12,
                                 padding: "4px 0",
-                                color: "var(--text, #ddd)",
-                                borderTop:
-                                  "1px solid var(--border, rgba(255,255,255,0.05))",
+                                color: "#cbd5e1",
+                                borderTop: "1px solid rgba(255,255,255,0.05)",
                               }}
                             >
                               <span>{meal.food}</span>
                               <span
-                                style={{ color: "var(--text-muted, #888)" }}
+                                style={{ color: "var(--text-muted, #94a3b8)" }}
                               >
                                 {meal.calories} kcal
                               </span>
@@ -459,7 +641,7 @@ export default function DashboardPage() {
                           ))}
                         </ul>
                       ) : (
-                        <span style={{ fontSize: 11, color: "#666" }}>
+                        <span style={{ fontSize: 11, color: "#64748b" }}>
                           No food logged
                         </span>
                       )}
@@ -470,45 +652,50 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* AI Chatbot Widget */}
+          {/* AI Nutrition Coach Widget */}
           <AIChat />
         </div>
 
-        <div className="dash-right">
-          {/* Calorie Summary */}
+        {/* Right Sidebar Column */}
+        <div
+          className="dash-right"
+          style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+        >
+          {/* Calorie Summary Ring */}
           <CalorieSummary
             totals={{ calories: totalCalories }}
             goal={goal || { daily_goal: 2000 }}
           />
 
-          {/* Dynamic Hydration Station */}
+          {/* BMI Card */}
+          <BMICard />
+
+          {/* Hydration Station */}
           <div
             className="card"
             style={{
-              background: "var(--surface-2, #15151e)",
+              background: "var(--surface-1, #1e293b)",
               padding: "16px",
               borderRadius: "10px",
             }}
           >
             <div
-              className="row-between mb-2"
               style={{
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
+                marginBottom: "8px",
               }}
             >
               <div
-                className="row gap-2"
                 style={{ display: "flex", alignItems: "center", gap: "6px" }}
               >
                 <span style={{ fontSize: "18px" }}>💧</span>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: "#fff" }}>
                   Hydration Station
                 </div>
               </div>
 
-              {/* Target Goal Display / Edit Switch */}
               {isEditingGoal ? (
                 <div
                   style={{ display: "flex", gap: "4px", alignItems: "center" }}
@@ -539,6 +726,7 @@ export default function DashboardPage() {
                       border: "none",
                       cursor: "pointer",
                       fontWeight: 600,
+                      color: "#000",
                     }}
                   >
                     Save
@@ -563,9 +751,8 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Progress Bar */}
+            {/* Hydration Bar */}
             <div
-              className="hydration-bar-wrap"
               style={{
                 width: "100%",
                 height: "18px",
@@ -578,7 +765,6 @@ export default function DashboardPage() {
               }}
             >
               <div
-                className="hydration-fill"
                 style={{
                   width: `${barFillPct}%`,
                   height: "100%",
@@ -605,7 +791,7 @@ export default function DashboardPage() {
               </span>
             </div>
 
-            {/* Dynamic Preset Increment Buttons */}
+            {/* Increment Buttons */}
             <div
               style={{
                 display: "grid",
@@ -624,7 +810,7 @@ export default function DashboardPage() {
                     fontSize: "11px",
                     fontWeight: 600,
                     borderRadius: "6px",
-                    background: "var(--surface, #1e293b)",
+                    background: "#0f172a",
                     color: "#00d2ff",
                     border: "1px solid #334155",
                     cursor: "pointer",
@@ -635,7 +821,7 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            {/* Custom Amount Logger & Reset Row */}
+            {/* Custom Log & Reset */}
             <div style={{ display: "flex", gap: "6px", marginTop: "10px" }}>
               <input
                 type="number"
@@ -680,7 +866,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 title="Reset today's water"
-                onClick={() => setWater(0)}
+                onClick={handleResetWater}
                 style={{
                   padding: "6px 8px",
                   fontSize: "11px",
@@ -697,6 +883,9 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Daily Nutrient Deficit & Surplus Breakdown */}
+      <NutrientBalance key={refreshKey} />
     </div>
   );
 }
