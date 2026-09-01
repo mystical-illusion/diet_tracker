@@ -10,6 +10,10 @@ from routes.analytics_routes import analytics_bp
 from routes.goal_routes import goal_bp
 from routes.user_routes import user_bp
 
+from routes.log_routes import log_bp  # or wherever daily logs are registered
+
+
+
 app = Flask(__name__)
 
 # Initialize CORS
@@ -40,6 +44,9 @@ app.register_blueprint(nutrition_bp, url_prefix="/nutrition")
 app.register_blueprint(analytics_bp, url_prefix="/analytics")
 app.register_blueprint(goal_bp, url_prefix="/goals")
 app.register_blueprint(user_bp, url_prefix="/user")
+
+app.register_blueprint(log_bp)
+
 
 if __name__ == "__main__":
     init_db()
