@@ -377,3 +377,105 @@ def add_water_log():
         "total_water": new_total,
         "date": date_str
     }), 200
+# Ensure methods include OPTIONS for CORS preflight
+@nutrition_bp.route("/ai-smart-target", methods=["POST", "OPTIONS"])
+def ai_smart_target():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+
+    age = data.get("age", 25)
+    gender = data.get("gender", "male")
+    weight_kg = data.get("weight_kg", 70)
+    height_cm = data.get("height_cm", 175)
+    activity_level = data.get("activity_level", "moderate")
+    health_conditions = data.get("health_conditions", "None")
+    current_goal = data.get("current_goal", 2000)
+
+    # 1. Fetch meal history for context
+    try:
+        conn = get_db()
+        meals = conn.execute("""
+            SELECT food, calories, date
+            FROM meals WHERE user_id = ?
+            ORDER BY date DESC LIMIT 15
+        """, (user_id,)).fetchall()
+        conn.close()
+
+        meal_summary = "\n".join([
+            f"- {m['food']}: {m['calories']} kcal"
+            for m in meals[:10]
+        ])
+    except Exception:
+        meal_summary = "No meals logged yet."
+
+    # 2. Strict JSON prompt for frontend auto-population
+    prompt = f"""
+    You are a clinical nutritionist and dietitian.
+    Calculate targeted nutrition values for this individual:
+    - Age: {age}, Gender: {gender}
+    - Height: {height_cm}cm, Weight: {weight_kg}kg
+    - Activity: {activity_level}
+    - Health conditions: {health_conditions}
+    - Current calorie goal: {current_goal} kcal
+    - Recent meals:
+    {meal_summary if meal_summary else "No meals logged yet"}
+
+    Respond ONLY with a valid JSON object matching this schema (no markdown, no backticks, no other text):
+    {{
+        "daily_goal": 1950,
+        "protein_pct": 30,
+        "carbs_pct": 45,
+        "fat_pct": 25,
+        "water_goal": 2600,
+        "exercise_mins_daily": 30,
+        "exercise_mins_weekly": 150,
+        "rationale": "2-3 clinical sentences explaining calorie and macro allocation.",
+        "condition_notes": "Clinical advice specifically addressing {health_conditions}."
+    }}
+    """
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return jsonify({
+            "daily_goal": 1900,
+            "protein_pct": 30,
+            "carbs_pct": 45,
+            "fat_pct": 25,
+            "water_goal": 2500,
+            "exercise_mins_daily": 30,
+            "exercise_mins_weekly": 150,
+            "rationale": "Baseline calculated from standard Mifflin-St Jeor TDEE formulas.",
+            "condition_notes": f"Ensure anti-inflammatory balance for {health_conditions}."
+        }), 200
+
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(prompt)
+        
+        # Clean potential markdown formatting
+        cleaned_text = response.text.strip().replace("```json", "").replace("```", "").strip()
+        parsed_data = json.loads(cleaned_text)
+
+        return jsonify(parsed_data), 200
+
+    except Exception as e:
+        print("AI Smart Target Error:", str(e))
+        # Fallback to prevent client crash
+        return jsonify({
+            "daily_goal": 2000,
+            "protein_pct": 30,
+            "carbs_pct": 45,
+            "fat_pct": 25,
+            "water_goal": 2500,
+            "exercise_mins_daily": 30,
+            "exercise_mins_weekly": 150,
+            "rationale": "Standard balanced distribution provided as fallback.",
+            "condition_notes": "Maintain consistent whole-food intake."
+        }), 200
