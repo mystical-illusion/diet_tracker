@@ -36,9 +36,9 @@ export default function NutritionPage() {
   const [waterGoal, setWaterGoal] = useState(2000);
   const [exerciseMins, setExerciseMins] = useState(30);
 
-  // TDEE & AI state
+  // TDEE & AI
   const [tdeeData, setTdeeData] = useState(null);
-  const [aiRecText, setAiRecText] = useState("");
+  const [aiRec, setAiRec] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -53,24 +53,25 @@ export default function NutritionPage() {
     if (goal) {
       setDailyGoal(goal.daily_goal || 2000);
       setGoalType(goal.goal_type || "maintenance");
-      setProteinPct(goal.protein_pct ?? 30);
-      setCarbsPct(goal.carbs_pct ?? 45);
-      setFatPct(goal.fat_pct ?? 25);
+      setProteinPct(Number(goal.protein_pct) || 30);
+      setCarbsPct(Number(goal.carbs_pct) || 45);
+      setFatPct(Number(goal.fat_pct) || 25);
       setWaterGoal(goal.water_goal || 2000);
       setExerciseMins(goal.exercise_mins_daily || 30);
-      setAge(goal.age || "");
+      setAge(goal.age ?? "");
       setGender(goal.gender || "male");
-      setHeight(goal.height_cm || "");
-      setWeight(goal.weight_kg || "");
+      setHeight(goal.height_cm ?? "");
+      setWeight(goal.weight_kg ?? "");
       setActivity(goal.activity_level || "moderate");
       setConditions(goal.health_conditions || "");
     }
   }, [goal]);
 
   // Calculated macros
-  const proteinG = Math.round((dailyGoal * proteinPct) / 100 / 4);
-  const carbsG = Math.round((dailyGoal * carbsPct) / 100 / 4);
-  const fatG = Math.round((dailyGoal * fatPct) / 100 / 9);
+  const safeDaily = Number(dailyGoal) || 0;
+  const proteinG = Math.round((safeDaily * proteinPct) / 100 / 4);
+  const carbsG = Math.round((safeDaily * carbsPct) / 100 / 4);
+  const fatG = Math.round((safeDaily * fatPct) / 100 / 9);
   const totalPct = proteinPct + carbsPct + fatPct;
 
   // Calculate TDEE
@@ -115,16 +116,18 @@ export default function NutritionPage() {
     setDailyGoal(tdeeData.presets[type]);
   };
 
-  // Get AI Recommendation & Auto-Fill Form
+  // Get AI recommendation & auto-populate controls
   const getAIRecommendation = async () => {
     if (!age || !height || !weight) {
-      alert("Please provide age, height, and weight for an accurate AI plan.");
+      alert(
+        "Please enter your age, height, and weight first so AI can calculate exact targets!",
+      );
       return;
     }
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_BASE}/goals/ai-recommend`, {
+      const response = await fetch(`${API_BASE}/nutrition/ai-smart-target`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -138,13 +141,12 @@ export default function NutritionPage() {
           weight_kg: parseFloat(weight),
           activity_level: activity,
           health_conditions: conditions,
-          goal_type: goalType,
-          daily_goal: dailyGoal,
+          current_goal: safeDaily,
         }),
       });
       const data = await response.json();
 
-      // If backend returned JSON targets, auto-fill the controls
+      // If structured targets are present, auto-fill form state
       if (data.daily_goal) setDailyGoal(data.daily_goal);
       if (data.protein_pct) setProteinPct(data.protein_pct);
       if (data.carbs_pct) setCarbsPct(data.carbs_pct);
@@ -152,14 +154,16 @@ export default function NutritionPage() {
       if (data.water_goal) setWaterGoal(data.water_goal);
       if (data.exercise_mins_daily) setExerciseMins(data.exercise_mins_daily);
 
-      setAiRecText(
-        data.rationale ||
-          data.recommendation ||
-          "AI plan configured and applied to targets.",
+      setAiRec(
+        data.recommendation ||
+          data.rationale ||
+          "Personalized smart targets computed and applied.",
       );
     } catch (err) {
       console.error("AI Smart Target Error:", err);
-      setAiRecText("Unable to retrieve AI recommendation. Please try again.");
+      setAiRec(
+        "Unable to retrieve AI recommendation. Check network connectivity or server logs.",
+      );
     } finally {
       setLoading(false);
     }
@@ -171,14 +175,16 @@ export default function NutritionPage() {
     setMessage("");
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_BASE}/goals/${user?.id}`, {
+      const targetUserId = user?.id || 2;
+      const response = await fetch(`${API_BASE}/goals/${targetUserId}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          daily_goal: dailyGoal,
+          user_id: targetUserId,
+          daily_goal: safeDaily,
           goal_type: goalType,
           age: parseInt(age, 10) || null,
           gender,
@@ -202,7 +208,7 @@ export default function NutritionPage() {
         setMessage("❌ Server rejected goal update");
       }
     } catch (err) {
-      setMessage("❌ Failed to connect to server");
+      setMessage("❌ Failed to save goals");
     } finally {
       setSaving(false);
     }
@@ -476,7 +482,7 @@ export default function NutritionPage() {
           </span>
         </div>
 
-        {/* Sliders */}
+        {/* Protein */}
         <div className="field">
           <div className="row-between">
             <label className="label">🥩 Protein {proteinPct}%</label>
@@ -491,11 +497,12 @@ export default function NutritionPage() {
             min="10"
             max="60"
             value={proteinPct}
-            onChange={(e) => setProteinPct(Number(e.target.value))}
+            onChange={(e) => setProteinPct(Number(e.target.value) || 0)}
             style={{ width: "100%", accentColor: "var(--cyan)" }}
           />
         </div>
 
+        {/* Carbs */}
         <div className="field">
           <div className="row-between">
             <label className="label">🌾 Carbs {carbsPct}%</label>
@@ -508,11 +515,12 @@ export default function NutritionPage() {
             min="10"
             max="70"
             value={carbsPct}
-            onChange={(e) => setCarbsPct(Number(e.target.value))}
+            onChange={(e) => setCarbsPct(Number(e.target.value) || 0)}
             style={{ width: "100%", accentColor: "#3498db" }}
           />
         </div>
 
+        {/* Fat */}
         <div className="field">
           <div className="row-between">
             <label className="label">🥑 Fat {fatPct}%</label>
@@ -525,12 +533,12 @@ export default function NutritionPage() {
             min="10"
             max="50"
             value={fatPct}
-            onChange={(e) => setFatPct(Number(e.target.value))}
+            onChange={(e) => setFatPct(Number(e.target.value) || 0)}
             style={{ width: "100%", accentColor: "#f1c40f" }}
           />
         </div>
 
-        {/* Visual Ratio Bar */}
+        {/* Visual bar */}
         <div
           style={{
             display: "flex",
@@ -651,7 +659,7 @@ export default function NutritionPage() {
           </button>
         </div>
 
-        {aiRecText ? (
+        {aiRec ? (
           <div
             style={{
               background: "var(--surface-2)",
@@ -662,7 +670,7 @@ export default function NutritionPage() {
               whiteSpace: "pre-wrap",
             }}
           >
-            {aiRecText}
+            {aiRec}
           </div>
         ) : (
           <div
@@ -673,13 +681,13 @@ export default function NutritionPage() {
               fontSize: 13,
             }}
           >
-            Fill in your stats above and click "Get Smart Target" to compute
-            automated calorie and macro goals. 🎯
+            Fill in your stats above and click "Get Smart Target" for AI
+            recommendations! 🎯
           </div>
         )}
       </div>
 
-      {/* Feedback Message */}
+      {/* Save Status Banner */}
       {message && (
         <div
           style={{
