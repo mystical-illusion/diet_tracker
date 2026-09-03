@@ -149,3 +149,121 @@ def init_db():
     conn.commit()
     conn.close()
     print("✅ Database initialized and verified successfully.")
+    # database/database.py (inside init_db)
+def init_db():
+    conn = get_db()
+    
+    # 1. Create table if fresh
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS goals (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id              INTEGER NOT NULL UNIQUE,
+            daily_goal           INTEGER NOT NULL DEFAULT 2000,
+            goal_type            TEXT DEFAULT 'maintenance',
+            age                  INTEGER,
+            gender               TEXT,
+            height_cm            REAL,
+            weight_kg            REAL,
+            activity_level       TEXT DEFAULT 'moderate',
+            protein_pct          REAL DEFAULT 30,
+            carbs_pct            REAL DEFAULT 45,
+            fat_pct              REAL DEFAULT 25,
+            protein_g            REAL,
+            carbs_g              REAL,
+            fat_g                REAL,
+            water_goal           INTEGER DEFAULT 2000,
+            exercise_mins_daily  INTEGER DEFAULT 30,
+            exercise_mins_weekly INTEGER DEFAULT 150,
+            health_conditions    TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """)
+
+    # 2. Safe migration for existing databases missing new columns
+    cursor = conn.execute("PRAGMA table_info(goals)")
+    existing_cols = {row["name"] for row in cursor.fetchall()}
+
+    columns_to_add = {
+        "goal_type": "TEXT DEFAULT 'maintenance'",
+        "age": "INTEGER",
+        "gender": "TEXT",
+        "height_cm": "REAL",
+        "weight_kg": "REAL",
+        "activity_level": "TEXT DEFAULT 'moderate'",
+        "protein_pct": "REAL DEFAULT 30",
+        "carbs_pct": "REAL DEFAULT 45",
+        "fat_pct": "REAL DEFAULT 25",
+        "protein_g": "REAL",
+        "carbs_g": "REAL",
+        "fat_g": "REAL",
+        "water_goal": "INTEGER DEFAULT 2000",
+        "exercise_mins_daily": "INTEGER DEFAULT 30",
+        "exercise_mins_weekly": "INTEGER DEFAULT 150",
+        "health_conditions": "TEXT"
+    }
+
+    for col_name, col_type in columns_to_add.items():
+        if col_name not in existing_cols:
+            conn.execute(f"ALTER TABLE goals ADD COLUMN {col_name} {col_type}")
+
+    conn.commit()
+    conn.close()
+
+def init_db():
+    conn = get_db()
+
+    # 1. Base table creation
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS goals (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id              INTEGER NOT NULL UNIQUE,
+            daily_goal           INTEGER NOT NULL DEFAULT 2000,
+            goal_type            TEXT DEFAULT 'maintenance',
+            age                  INTEGER,
+            gender               TEXT,
+            height_cm            REAL,
+            weight_kg            REAL,
+            activity_level       TEXT DEFAULT 'moderate',
+            protein_pct          REAL DEFAULT 30,
+            carbs_pct            REAL DEFAULT 45,
+            fat_pct              REAL DEFAULT 25,
+            protein_g            REAL,
+            carbs_g              REAL,
+            fat_g                REAL,
+            water_goal           INTEGER DEFAULT 2000,
+            exercise_mins_daily  INTEGER DEFAULT 30,
+            exercise_mins_weekly INTEGER DEFAULT 150,
+            health_conditions    TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """)
+
+    # 2. Automated ALTER TABLE migration for existing databases
+    cursor = conn.execute("PRAGMA table_info(goals)")
+    existing_cols = {row["name"] for row in cursor.fetchall()}
+
+    new_columns = {
+        "goal_type": "TEXT DEFAULT 'maintenance'",
+        "age": "INTEGER",
+        "gender": "TEXT",
+        "height_cm": "REAL",
+        "weight_kg": "REAL",
+        "activity_level": "TEXT DEFAULT 'moderate'",
+        "protein_pct": "REAL DEFAULT 30",
+        "carbs_pct": "REAL DEFAULT 45",
+        "fat_pct": "REAL DEFAULT 25",
+        "protein_g": "REAL",
+        "carbs_g": "REAL",
+        "fat_g": "REAL",
+        "water_goal": "INTEGER DEFAULT 2000",
+        "exercise_mins_daily": "INTEGER DEFAULT 30",
+        "exercise_mins_weekly": "INTEGER DEFAULT 150",
+        "health_conditions": "TEXT"
+    }
+
+    for col_name, col_def in new_columns.items():
+        if col_name not in existing_cols:
+            conn.execute(f"ALTER TABLE goals ADD COLUMN {col_name} {col_def}")
+
+    conn.commit()
+    conn.close()
